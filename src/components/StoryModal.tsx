@@ -60,14 +60,23 @@ export const StoryModal: React.FC<StoryModalProps> = ({
         <div className="modal-artwork-col">
           <img
             src={story.coverImage}
-            alt={story.title}
-            className="modal-artwork-img"
+            alt=""
+            aria-hidden="true"
+            className="modal-artwork-ambient-bg"
           />
           <div className="modal-artwork-overlay">
             <span className="modal-style-chip">
               <Palette size={12} style={{ display: 'inline', marginRight: 4 }} />
               {story.artStyle}
             </span>
+
+            <div className="modal-artwork-stage">
+              <img
+                src={story.coverImage}
+                alt={story.title}
+                className="modal-artwork-img"
+              />
+            </div>
 
             <div className="modal-left-footer">
               <button

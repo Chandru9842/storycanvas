@@ -122,18 +122,55 @@
   border-right: 1px solid var(--border-subtle);
 }
 
+.reader-artwork-ambient-bg {
+  position: absolute;
+  inset: -28px;
+  width: calc(100% + 56px);
+  height: calc(100% + 56px);
+  object-fit: cover;
+  filter: blur(36px) brightness(0.28) saturate(1.25);
+  pointer-events: none;
+  z-index: 0;
+}
+
 .reader-artwork-wrapper {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 24px;
+}
+
+.reader-artwork-pane.fit-cover .reader-artwork-wrapper {
   position: absolute;
   inset: 0;
+  padding: 0;
   z-index: 1;
 }
 
 .reader-artwork-image {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  border-radius: var(--radius-md);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  cursor: zoom-in;
+  transition: opacity 400ms ease, transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reader-artwork-image.is-cover {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  display: block;
-  transition: opacity 400ms ease, transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 /* Fallback Artwork Frame (Graceful Error Handling) */
@@ -148,6 +185,7 @@
   background: linear-gradient(135deg, #181E27 0%, #0D1015 100%);
   padding: 32px;
   text-align: center;
+  border-radius: var(--radius-md);
 }
 
 .reader-fallback-icon {
@@ -167,20 +205,21 @@
   inset: 0;
   background: linear-gradient(
     to bottom,
-    rgba(9, 11, 14, 0.7) 0%,
-    transparent 20%,
-    transparent 65%,
+    rgba(9, 11, 14, 0.65) 0%,
+    rgba(9, 11, 14, 0.15) 25%,
+    rgba(9, 11, 14, 0.15) 70%,
     rgba(9, 11, 14, 0.85) 100%
   );
   pointer-events: none;
-  z-index: 2;
+  z-index: 1;
 }
 
 /* Artwork Overlays */
 .reader-artwork-top-overlay {
   position: relative;
   z-index: 3;
-  padding: 24px;
+  flex-shrink: 0;
+  padding: 20px 24px 12px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -214,10 +253,11 @@
 .reader-artwork-bottom-overlay {
   position: relative;
   z-index: 3;
-  padding: 24px 28px;
+  flex-shrink: 0;
+  padding: 12px 28px 22px 28px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .reader-image-caption {
@@ -226,7 +266,7 @@
   font-style: italic;
   color: var(--text-secondary);
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
-  max-width: 480px;
+  max-width: 520px;
   line-height: 1.5;
 }
 

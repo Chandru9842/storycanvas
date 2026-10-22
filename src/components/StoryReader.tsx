@@ -61,6 +61,7 @@ export const StoryReader: React.FC<StoryReaderProps> = ({
   const [fontSizeLevel, setFontSizeLevel] = useState<number>(1); // 0 = standard, 1 = comfortable, 2 = large
   const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
   const [isArtworkZoomed, setIsArtworkZoomed] = useState<boolean>(false);
+  const [artworkFitMode, setArtworkFitMode] = useState<'contain' | 'cover'>('contain');
   const [isRegenerating, setIsRegenerating] = useState<boolean>(false);
 
   const scrubberRef = useRef<HTMLDivElement | null>(null);
@@ -292,13 +293,58 @@ export const StoryReader: React.FC<StoryReaderProps> = ({
       {/* Split Screen Layout */}
       <div className="reader-split-layout">
         {/* Left Pane: Cinematic Artwork Stage */}
-        <section className="reader-artwork-pane" aria-label="Scene Illustration">
+        <section
+          className={`reader-artwork-pane ${artworkFitMode === 'cover' ? 'fit-cover' : 'fit-contain'}`}
+          aria-label="Scene Illustration"
+        >
+          {/* Ambient Blurred Backdrop so full-fit images have a rich atmospheric stage */}
+          {hasImage && (
+            <img
+              src={activeImage}
+              alt=""
+              aria-hidden="true"
+              className="reader-artwork-ambient-bg"
+            />
+          )}
+          <div className="reader-artwork-gradient" />
+
+          {/* Artwork Top Overlay Badges */}
+          <div className="reader-artwork-top-overlay">
+            <span className="reader-art-movement-tag">
+              <Sparkles size={11} style={{ display: 'inline', marginRight: 4 }} />
+              {currentChapter.artMovement || story.artStyle}
+            </span>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="reader-scene-badge">
+                Scene {activeChapterIndex + 1}/{chapters.length}
+              </span>
+              <button
+                className="reader-tool-btn"
+                style={{ padding: '4px 9px', fontSize: '0.7rem' }}
+                onClick={() => setArtworkFitMode((prev) => (prev === 'contain' ? 'cover' : 'contain'))}
+                title={artworkFitMode === 'contain' ? 'Switch to Fill frame' : 'Switch to Fit full image'}
+              >
+                {artworkFitMode === 'contain' ? 'Fill' : 'Fit'}
+              </button>
+              <button
+                className="reader-tool-btn"
+                style={{ padding: '4px 8px' }}
+                onClick={() => setIsArtworkZoomed(!isArtworkZoomed)}
+                title="Expand artwork"
+              >
+                <Maximize2 size={13} />
+              </button>
+            </div>
+          </div>
+
           <div className="reader-artwork-wrapper">
             {hasImage ? (
               <img
                 src={activeImage}
                 alt={currentChapter.title}
-                className="reader-artwork-image"
+                className={`reader-artwork-image ${artworkFitMode === 'cover' ? 'is-cover' : 'is-contain'}`}
+                onClick={() => setIsArtworkZoomed(true)}
                 onError={() => setImageError(true)}
               />
             ) : (
@@ -323,29 +369,6 @@ export const StoryReader: React.FC<StoryReaderProps> = ({
                 </span>
               </div>
             )}
-            <div className="reader-artwork-gradient" />
-          </div>
-
-          {/* Artwork Top Overlay Badges */}
-          <div className="reader-artwork-top-overlay">
-            <span className="reader-art-movement-tag">
-              <Sparkles size={11} style={{ display: 'inline', marginRight: 4 }} />
-              {currentChapter.artMovement || story.artStyle}
-            </span>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="reader-scene-badge">
-                Scene {activeChapterIndex + 1}/{chapters.length}
-              </span>
-              <button
-                className="reader-tool-btn"
-                style={{ padding: '4px 8px' }}
-                onClick={() => setIsArtworkZoomed(!isArtworkZoomed)}
-                title="Expand artwork"
-              >
-                <Maximize2 size={13} />
-              </button>
-            </div>
           </div>
 
           {/* Artwork Bottom Caption & Scene Dots */}

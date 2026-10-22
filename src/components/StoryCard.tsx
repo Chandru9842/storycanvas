@@ -29,6 +29,13 @@ export const StoryCard: React.FC<StoryCardProps> = ({
       <div className="card-artwork-wrapper" onClick={() => onOpenDetails(story)}>
         <img
           src={story.coverImage}
+          alt=""
+          aria-hidden="true"
+          className="card-artwork-ambient-bg"
+          loading="lazy"
+        />
+        <img
+          src={story.coverImage}
           alt={story.title}
           className="card-artwork-img"
           loading="lazy"
