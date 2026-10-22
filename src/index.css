@@ -1,0 +1,25 @@
+/* ==========================================================================
+   StoryCanvas Main Stylesheet Entry
+   Bespoke Vanilla CSS Design System
+   ========================================================================== */
+
+@import './styles/tokens.css';
+@import './styles/navbar.css';
+@import './styles/hero.css';
+@import './styles/gallery.css';
+@import './styles/vignettes.css';
+@import './styles/player.css';
+@import './styles/modal.css';
+@import './styles/reader.css';
+@import './styles/studio.css';
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+main {
+  flex: 1;
+}
