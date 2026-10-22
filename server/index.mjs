@@ -8,15 +8,26 @@ import { config } from './config.mjs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Ensure generated storage directories exist
-const generatedAudioDir = path.resolve(__dirname, '../public/generated/audio');
-const generatedImagesDir = path.resolve(__dirname, '../public/generated/images');
+// Detect Vercel serverless environment
+const isVercel = Boolean(process.env.VERCEL);
 
-if (!fs.existsSync(generatedAudioDir)) {
-  fs.mkdirSync(generatedAudioDir, { recursive: true });
-}
-if (!fs.existsSync(generatedImagesDir)) {
-  fs.mkdirSync(generatedImagesDir, { recursive: true });
+// Ensure generated storage directories exist (use /tmp in serverless environments)
+const generatedAudioDir = isVercel
+  ? path.resolve('/tmp/generated/audio')
+  : path.resolve(__dirname, '../public/generated/audio');
+const generatedImagesDir = isVercel
+  ? path.resolve('/tmp/generated/images')
+  : path.resolve(__dirname, '../public/generated/images');
+
+try {
+  if (!fs.existsSync(generatedAudioDir)) {
+    fs.mkdirSync(generatedAudioDir, { recursive: true });
+  }
+  if (!fs.existsSync(generatedImagesDir)) {
+    fs.mkdirSync(generatedImagesDir, { recursive: true });
+  }
+} catch (dirErr) {
+  console.warn('Storage directory initialization notice:', dirErr.message);
 }
 
 const app = express();
@@ -518,13 +529,19 @@ app.post('/api/generate-images', async (req, res) => {
 
               const contentType = imgRes.headers.get('content-type') || '';
               if (imgRes.ok && contentType.startsWith('image/')) {
-                const arrayBuf = await imgRes.arrayBuffer();
                 const filename = `${storyId}-scene-${index + 1}.jpg`;
-                const localPath = path.join(generatedImagesDir, filename);
-                fs.writeFileSync(localPath, Buffer.from(arrayBuf));
+                if (!isVercel) {
+                  try {
+                    const arrayBuf = await imgRes.arrayBuffer();
+                    const localPath = path.join(generatedImagesDir, filename);
+                    fs.writeFileSync(localPath, Buffer.from(arrayBuf));
+                  } catch (writeErr) {
+                    console.warn('Could not write image to disk:', writeErr.message);
+                  }
+                }
                 return {
                   ...chapter,
-                  sceneImage: `/generated/images/${filename}`,
+                  sceneImage: isVercel ? remoteUrl : `/generated/images/${filename}`,
                 };
               } else {
                 console.warn(
@@ -740,7 +757,17 @@ app.post('/api/generate-speech', async (req, res) => {
 
       const filename = `${storyId}.wav`;
       const localPath = path.join(generatedAudioDir, filename);
-      fs.writeFileSync(localPath, finalWav);
+      let audioUrl = `/generated/audio/${filename}`;
+
+      try {
+        fs.writeFileSync(localPath, finalWav);
+      } catch (writeErr) {
+        console.warn('Could not write WAV file to disk:', writeErr.message);
+      }
+
+      if (isVercel) {
+        audioUrl = `data:audio/wav;base64,${finalWav.toString('base64')}`;
+      }
 
       const totalDurSec = Math.round(getAudioBufferDurationSec(finalWav) * 100) / 100;
 
@@ -752,7 +779,7 @@ app.post('/api/generate-speech', async (req, res) => {
 
       return res.json({
         success: true,
-        audioUrl: `/generated/audio/${filename}`,
+        audioUrl,
         duration: `${Math.ceil(totalDurSec / 60)} min listen`,
         durationSec: totalDurSec,
         chapters: calibratedChapters,
@@ -829,11 +856,21 @@ app.post('/api/generate-speech', async (req, res) => {
 
         const filename = `${storyId}.mp3`;
         const localPath = path.join(generatedAudioDir, filename);
-        fs.writeFileSync(localPath, totalMp3);
+        let audioUrl = `/generated/audio/${filename}`;
+
+        try {
+          fs.writeFileSync(localPath, totalMp3);
+        } catch (writeErr) {
+          console.warn('Could not write MP3 file to disk:', writeErr.message);
+        }
+
+        if (isVercel) {
+          audioUrl = `data:audio/mp3;base64,${totalMp3.toString('base64')}`;
+        }
 
         return res.json({
           success: true,
-          audioUrl: `/generated/audio/${filename}`,
+          audioUrl,
           duration: `${Math.ceil(totalDurSec / 60)} min listen`,
           durationSec: totalDurSec,
           chapters: calibratedChapters,
@@ -857,12 +894,16 @@ app.post('/api/generate-speech', async (req, res) => {
   }
 });
 
-// Start Express server
-const PORT = config.port;
-app.listen(PORT, () => {
-  console.log(`StoryCanvas AI Server running on http://localhost:${PORT}`);
-  console.log(`- Health Check: http://localhost:${PORT}/api/health`);
-  console.log(`- Image Provider: ${config.imageProvider}`);
-  console.log(`- TTS Provider: ${config.ttsProvider}`);
-});
+// Start Express server if running as standalone process
+if (!process.env.VERCEL) {
+  const PORT = config.port;
+  app.listen(PORT, () => {
+    console.log(`StoryCanvas AI Server running on http://localhost:${PORT}`);
+    console.log(`- Health Check: http://localhost:${PORT}/api/health`);
+    console.log(`- Image Provider: ${config.imageProvider}`);
+    console.log(`- TTS Provider: ${config.ttsProvider}`);
+  });
+}
+
+export default app;
 
