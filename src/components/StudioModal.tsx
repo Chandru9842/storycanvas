@@ -60,6 +60,56 @@ const NARRATORS = [
   { name: 'Morwenna Crow', desc: 'Dramatic Alto • Mythic Cadence' },
 ];
 
+/**
+ * Resizes and compresses uploaded images to <= 1024px JPEG
+ * Prevents Vercel 4.5MB Serverless request payload limits (HTTP 413 Request Entity Too Large).
+ */
+function compressImage(file: File, maxDim = 1024, quality = 0.82): Promise<{ base64: string; mimeType: string }> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let width = img.width;
+      let height = img.height;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        const mimeType = 'image/jpeg';
+        const base64 = canvas.toDataURL(mimeType, quality);
+        resolve({ base64, mimeType });
+      } else {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          resolve({ base64: reader.result as string, mimeType: file.type });
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        resolve({ base64: reader.result as string, mimeType: file.type });
+      };
+      reader.readAsDataURL(file);
+    };
+    img.src = url;
+  });
+}
+
 export const StudioModal: React.FC<StudioModalProps> = ({ isOpen, onClose, onStoryCreated }) => {
   const [uploadedImages, setUploadedImages] = useState<UploadedImageItem[]>([]);
   const [isDragActive, setIsDragActive] = useState<boolean>(false);
@@ -143,26 +193,23 @@ export const StudioModal: React.FC<StudioModalProps> = ({ isOpen, onClose, onSto
     let completed = 0;
     const newItems: UploadedImageItem[] = [];
 
-    validFiles.forEach((file) => {
+    validFiles.forEach(async (file) => {
       const objectUrl = URL.createObjectURL(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        newItems.push({
-          id: `img-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-          file,
-          previewUrl: objectUrl,
-          base64: reader.result as string,
-          mimeType: file.type,
-          name: file.name,
-          size: file.size,
-        });
+      const { base64, mimeType } = await compressImage(file);
+      newItems.push({
+        id: `img-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        file,
+        previewUrl: objectUrl,
+        base64,
+        mimeType,
+        name: file.name,
+        size: Math.round(base64.length * 0.75),
+      });
 
-        completed++;
-        if (completed === validFiles.length) {
-          setUploadedImages((prev) => [...prev, ...newItems].slice(0, 5));
-        }
-      };
-      reader.readAsDataURL(file);
+      completed++;
+      if (completed === validFiles.length) {
+        setUploadedImages((prev) => [...prev, ...newItems].slice(0, 5));
+      }
     });
   };
 
@@ -250,8 +297,24 @@ export const StudioModal: React.FC<StudioModalProps> = ({ isOpen, onClose, onSto
         }),
       });
 
+      if (!storyRes.ok) {
+        const errorText = await storyRes.text();
+        let errorMsg = 'Gemini story generation failed.';
+        try {
+          const parsed = JSON.parse(errorText);
+          errorMsg = parsed.error || errorMsg;
+        } catch {
+          if (storyRes.status === 413 || errorText.includes('Request Entity Too Large')) {
+            errorMsg = 'Upload payload too large for serverless limit. Please use smaller images.';
+          } else {
+            errorMsg = errorText || `Server error (${storyRes.status})`;
+          }
+        }
+        throw new Error(errorMsg);
+      }
+
       const storyJson = await storyRes.json();
-      if (!storyRes.ok || !storyJson.success) {
+      if (!storyJson.success) {
         throw new Error(storyJson.error || 'Gemini story generation failed.');
       }
 
@@ -289,8 +352,20 @@ export const StudioModal: React.FC<StudioModalProps> = ({ isOpen, onClose, onSto
         }),
       });
 
+      if (!speechRes.ok) {
+        const errText = await speechRes.text();
+        let errDesc = 'Spoken narration generation failed.';
+        try {
+          const parsed = JSON.parse(errText);
+          errDesc = parsed.error || errDesc;
+        } catch {
+          errDesc = errText || `Speech error (${speechRes.status})`;
+        }
+        throw new Error(errDesc);
+      }
+
       const speechJson = await speechRes.json();
-      if (!speechRes.ok || !speechJson.success || !speechJson.audioUrl) {
+      if (!speechJson.success || !speechJson.audioUrl) {
         throw new Error(
           speechJson.error || 'Spoken narration generation failed to produce complete audio.'
         );
