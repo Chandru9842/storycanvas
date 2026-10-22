@@ -1,0 +1,8 @@
+{
+  "name": "StoryCanvas — Visual Storytelling & Spoken Narration",
+  "description": "Experience rich visual stories combining masterwork AI illustrations with spoken narration, interactive waveforms, and editorial typography.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -3,6 +3,7 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { GoogleGenAI } from '@google/genai';
 import { config } from './config.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -192,46 +193,63 @@ app.get('/api/health', (req, res) => {
 });
 
 /**
- * Helper: Call Gemini API with retry and model fallback for demand spikes
+ * Helper: Call Gemini API using @google/genai SDK with retry and model fallback
  */
 async function callGemini(preferredModel, payload) {
-  if (!config.geminiApiKey) {
-    throw new Error('GEMINI_API_KEY is not configured in .env. Please set a valid key.');
+  const apiKey = process.env.GEMINI_API_KEY || config.geminiApiKey;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is not configured.');
   }
+
+  const ai = new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
 
   // Model cascade: try preferred model first, then fallback to other active flash models
   const candidateModels = preferredModel.includes('tts')
-    ? [preferredModel, 'gemini-3.8-flash-tts']
-    : [preferredModel, 'gemini-3.7-flash', 'gemini-flash-latest'];
+    ? ['gemini-3.8-flash-lite-tts', 'gemini-3.8-flash-tts']
+    : ['gemini-3.8-flash', 'gemini-flash-latest'];
 
+  // Normalize REST-style inline_data parts into SDK inlineData format
+  const normalizedContents = Array.isArray(payload.contents)
+    ? payload.contents.map((item) => {
+        if (!item || !Array.isArray(item.parts)) return item;
+        return {
+          ...item,
+          parts: item.parts.map((part) => {
+            if (part && part.inline_data) {
+              return {
+                inlineData: {
+                  mimeType: part.inline_data.mime_type || part.inline_data.mimeType || 'image/jpeg',
+                  data: part.inline_data.data,
+                },
+              };
+            }
+            return part;
+          }),
+        };
+      })
+    : payload.contents;
+
+  const sdkConfig = payload.config || payload.generationConfig || {};
   let lastError = null;
 
   for (const model of candidateModels) {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.geminiApiKey}`;
-
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+        const response = await ai.models.generateContent({
+          model,
+          contents: normalizedContents,
+          config: sdkConfig,
         });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          const errorMsg = data.error?.message || `HTTP ${response.status}: ${response.statusText}`;
-          // If 503 or 429 demand spike, retry or switch model
-          if (response.status === 503 || response.status === 429) {
-            throw new Error(`Demand spike (${response.status}): ${errorMsg}`);
-          }
-          throw new Error(errorMsg);
-        }
-
-        return data;
+        return response;
       } catch (err) {
         lastError = err;
-        // Wait 1.5s before next attempt
         await new Promise((resolve) => setTimeout(resolve, 1500));
       }
     }
@@ -380,8 +398,8 @@ Return ONLY a valid raw JSON object strictly conforming to this structure:
       },
     };
 
-    const result = await callGemini('gemini-3.5-flash', payload);
-    const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    const result = await callGemini('gemini-3.8-flash', payload);
+    const rawText = result.text || result.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!rawText) {
       throw new Error('Gemini API did not return story content. Please retry.');
@@ -698,10 +716,17 @@ app.post('/api/generate-speech', async (req, res) => {
       try {
         const ttsPromises = sceneScripts.map(async (scriptText) => {
           const payload = {
-            contents: [{ parts: [{ text: scriptText }] }],
-            generationConfig: { responseModalities: ['AUDIO'] },
+            contents: [{ role: 'user', parts: [{ text: scriptText }] }],
+            config: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: 'Kore' },
+                },
+              },
+            },
           };
-          const result = await callGemini('gemini-3.8-flash-tts', payload);
+          const result = await callGemini('gemini-3.8-flash-lite-tts', payload);
           const b64Data = result.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
           if (!b64Data) throw new Error('No audio data returned from Gemini TTS for chapter');
           const fullBuf = Buffer.from(b64Data, 'base64');
@@ -894,15 +919,35 @@ app.post('/api/generate-speech', async (req, res) => {
   }
 });
 
-// Start Express server if running as standalone process
+// Start Express + Vite server if running as standalone process
 if (!process.env.VERCEL) {
-  const PORT = config.port;
-  app.listen(PORT, () => {
-    console.log(`StoryCanvas AI Server running on http://localhost:${PORT}`);
-    console.log(`- Health Check: http://localhost:${PORT}/api/health`);
-    console.log(`- Image Provider: ${config.imageProvider}`);
-    console.log(`- TTS Provider: ${config.ttsProvider}`);
-  });
+  const startServer = async () => {
+    const PORT = Number(process.env.PORT) || config.port || 3000;
+
+    if (process.env.NODE_ENV !== 'production') {
+      const { createServer: createViteServer } = await import('vite');
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+    } else {
+      const distPath = path.resolve(__dirname, '../dist');
+      app.use(express.static(distPath));
+      app.use((req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    }
+
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`StoryCanvas AI Server running on http://0.0.0.0:${PORT}`);
+      console.log(`- Health Check: http://localhost:${PORT}/api/health`);
+      console.log(`- Image Provider: ${config.imageProvider}`);
+      console.log(`- TTS Provider: ${config.ttsProvider}`);
+    });
+  };
+
+  startServer();
 }
 
 export default app;

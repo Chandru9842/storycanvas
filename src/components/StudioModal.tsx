@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   X,
   Sparkles,
@@ -123,24 +123,9 @@ export const StudioModal: React.FC<StudioModalProps> = ({ isOpen, onClose, onSto
 
   const [stage, setStage] = useState<GenerationStage>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [backendConfigured, setBackendConfigured] = useState<boolean | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const addMoreInputRef = useRef<HTMLInputElement | null>(null);
-
-  // Check backend health and API key configuration on modal open
-  useEffect(() => {
-    if (!isOpen) return;
-
-    fetch('/api/health')
-      .then((res) => res.json())
-      .then((data) => {
-        setBackendConfigured(data.configured?.hasGeminiKey ?? false);
-      })
-      .catch(() => {
-        setBackendConfigured(false);
-      });
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -440,21 +425,6 @@ export const StudioModal: React.FC<StudioModalProps> = ({ isOpen, onClose, onSto
             </div>
           </div>
         </div>
-
-        {/* Missing API Key Notice */}
-        {backendConfigured === false && (
-          <div className="studio-error-banner" style={{ background: 'rgba(224, 159, 62, 0.1)', borderColor: 'rgba(224, 159, 62, 0.35)', color: 'var(--amber-primary)' }}>
-            <AlertCircle size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
-            <div>
-              <p style={{ fontWeight: 600, marginBottom: '2px' }}>
-                Gemini API Key Required
-              </p>
-              <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                Please configure <code style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px' }}>GEMINI_API_KEY</code> in your local <code style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px' }}>.env</code> file to enable live AI multimodal story generation and Gemini TTS.
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* Multi-Image Sequence Section */}
         {imageCount === 0 ? (
